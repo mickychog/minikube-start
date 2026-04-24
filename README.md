@@ -402,3 +402,422 @@ minikube addons enable registry             # Habilitar Registry local
 ```
 
 ---
+
+## 🖥️ Instalar K9s
+
+K9s es una interfaz TUI (Terminal UI) que permite gestionar Kubernetes de forma visual e interactiva desde la terminal.
+
+### Método 1 — Script automático
+
+```bash
+curl -sS https://webinstall.dev/k9s | bash
+```
+
+### Método 2 — Desde GitHub Releases (recomendado)
+
+```bash
+# Descargar la última versión
+curl -LO https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_amd64.tar.gz
+
+# Extraer
+tar -xzf k9s_Linux_amd64.tar.gz
+
+# Instalar
+sudo mv k9s /usr/local/bin/
+```
+
+### Verificar e iniciar
+
+```bash
+k9s version
+k9s          # Abre la interfaz TUI automáticamente
+```
+
+### Atajos de teclado principales en K9s
+
+| Tecla | Acción |
+|-------|--------|
+| `:pods` | Ver Pods |
+| `:svc` | Ver Services |
+| `:deploy` | Ver Deployments |
+| `:nodes` | Ver Nodes |
+| `:ns` | Ver Namespaces |
+| `l` | Ver logs del Pod seleccionado |
+| `s` | Abrir shell en el contenedor |
+| `d` | Describir el recurso |
+| `ctrl+d` | Eliminar recurso |
+| `?` | Ver todos los atajos |
+| `q` | Salir / volver atrás |
+
+---
+
+## 🌱 Tu primer despliegue
+
+### 1. Crear un Deployment con nginx
+
+```bash
+kubectl create deployment mi-app --image=nginx 
+kubectl get deployments
+```
+
+### 2. Escalar a 3 réplicas
+
+```bash
+kubectl scale deployment mi-app --replicas=3
+kubectl get pods
+```
+
+### 3. Exponer con un Service
+
+```bash
+kubectl expose deployment mi-app --type=NodePort --port=80
+kubectl get services
+```
+
+### 4. Abrir en el navegador
+
+```bash
+minikube service mi-app
+# Abre automáticamente el navegador 🎉
+```
+
+### 5. Ver todos los recursos
+
+```bash
+kubectl get all
+```
+
+---
+
+## 👋 Hola Mundo en Kubernetes
+
+Ejemplo completo desde cero: una app Node.js propia desplegada en Minikube.
+
+### Estructura del proyecto
+
+```
+hola-mundo/
+├── app.js
+├── Dockerfile
+├── hola-deployment.yaml
+└── hola-service.yaml
+```
+
+### app.js
+
+```javascript
+const http = require('http');
+
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end('<h1>¡Hola Mundo desde Kubernetes! ☸️</h1>');
+}).listen(3000, () => {
+  console.log('Servidor corriendo en puerto 3000');
+});
+```
+
+### Dockerfile
+
+```dockerfile
+FROM node:18-alpine
+WORKDIR /app
+COPY app.js .
+EXPOSE 3000
+CMD ["node", "app.js"]
+```
+
+### Construir la imagen dentro del Docker de Minikube
+
+```bash
+# Apuntar Docker CLI al daemon de Minikube
+eval $(minikube docker-env)
+
+# Construir la imagen
+docker build -t hola-mundo:v1 .
+
+# Verificar que la imagen existe
+docker images | grep hola-mundo
+
+# VERIFICAR que Minikube tiene la imagen (PASO NUEVO)
+echo "Verificando imagen dentro de Minikube..."
+minikube ssh 'docker images | grep hola-mundo || echo "Imagen no encontrada"'
+```
+
+### hola-deployment.yaml
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hola-mundo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hola-mundo
+  template:
+    metadata:
+      labels:
+        app: hola-mundo
+    spec:
+      containers:
+      - name: app
+        image: hola-mundo:v1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+```
+
+> **Nota:** `imagePullPolicy: IfNotPresent` es crucial cuando usas imágenes locales construidas con el Docker de Minikube. Sin esto, K8s intentará descargar la imagen de internet y fallará.
+
+### hola-service.yaml
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: hola-svc
+spec:
+  type: NodePort
+  selector:
+    app: hola-mundo
+  ports:
+  - port: 3000
+    targetPort: 3000
+    nodePort: 30080   # Puerto accesible desde el host
+```
+
+### Desplegar y acceder
+
+```bash
+# Aplicar ambos manifiestos
+kubectl apply -f hola-deployment.yaml -f hola-service.yaml
+
+# ESPERAR y verificar pods 
+echo "Esperando pods..."
+kubectl wait --for=condition=ready pod -l app=hola-mundo --timeout=60s
+
+# Verificar que el Pod está corriendo
+kubectl get pods
+kubectl get svc
+
+# abrir en el navegador
+minikube service hola-svc
+```
+
+### Escalar tu app hola-mundo a 3 réplicas
+```bash
+
+kubectl scale deployment hola-mundo --replicas=3
+
+# Ver las 3 réplicas
+kubectl get pods -l app=hola-mundo
+```
+---
+
+## ⛵ Helm — Gestor de Paquetes
+
+Helm es el gestor de paquetes de Kubernetes. Como `apt`/`yum` para Linux, pero para apps en K8s.
+
+### Instalar Helm
+
+#### Método oficial (recomendado)
+
+```bash
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+```
+
+#### Método manual
+
+```bash
+curl -LO https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz
+tar -zxvf helm-v3.14.0-linux-amd64.tar.gz
+sudo mv linux-amd64/helm /usr/local/bin/helm
+```
+
+#### Verificar
+
+```bash
+helm version
+```
+
+### Agregar repositorios
+
+```bash
+helm repo add stable  https://charts.helm.sh/stable
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+
+# Buscar charts
+helm search repo nginx
+helm search hub  wordpress
+```
+
+---
+
+### Anatomía de un Chart
+
+```
+mi-chart/
+├── Chart.yaml          # Metadatos del chart (nombre, versión, descripción)
+├── values.yaml         # Valores por defecto (los puedes sobrescribir)
+├── charts/             # Dependencias (sub-charts)
+├── templates/          # Plantillas YAML con variables {{ }}
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   ├── ingress.yaml
+│   └── _helpers.tpl    # Funciones reutilizables
+└── .helmignore         # Archivos a ignorar al empaquetar
+```
+
+#### Chart.yaml
+
+```yaml
+apiVersion: v2
+name: mi-chart
+description: Mi primera app con Helm
+type: application
+version: 0.1.0       # Versión del chart
+appVersion: "1.0.0"  # Versión de la aplicación
+```
+
+#### values.yaml
+
+```yaml
+replicaCount: 1
+
+image:
+  repository: nginx
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  host: mi-app.local
+```
+
+---
+
+### Templating: cómo funciona
+
+Los templates son YAMLs con variables `{{ }}`. Helm los combina con `values.yaml` para generar el YAML final.
+
+#### templates/deployment.yaml
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-app
+  labels:
+    app: {{ .Chart.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  template:
+    spec:
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        ports:
+        - containerPort: {{ .Values.service.port }}
+```
+
+#### Objetos built-in disponibles
+
+| Objeto | Descripción |
+|--------|-------------|
+| `.Release.Name` | Nombre de la release |
+| `.Release.Namespace` | Namespace donde se instala |
+| `.Chart.Name` | Nombre del chart |
+| `.Chart.Version` | Versión del chart |
+| `.Values.*` | Cualquier valor de values.yaml |
+| `.Files.*` | Acceso a archivos del chart |
+
+#### Renderizar sin instalar (debug)
+
+```bash
+helm template ./mi-chart
+```
+
+---
+
+### Crear tu primer Chart propio
+
+#### Paso 1 — Generar la estructura
+
+```bash
+helm create hola-chart
+tree hola-chart/
+```
+
+#### Paso 2 — Editar values.yaml
+
+```yaml
+# hola-chart/values.yaml
+replicaCount: 2
+
+image:
+  repository: hola-mundo
+  tag: "v1"
+  pullPolicy: Never
+
+service:
+  type: NodePort
+  port: 3000
+```
+
+#### Paso 3 — Validar el chart
+
+```bash
+# Detectar errores en el chart
+helm lint hola-chart/
+
+# Ver el YAML que generaría Helm sin instalar
+helm template hola-chart/
+```
+
+#### Paso 4 — Instalar en Minikube
+
+```bash
+helm install mi-hola ./hola-chart
+
+# Verificar
+kubectl get pods
+minikube service mi-hola-hola-chart
+```
+
+#### Paso 5 — Gestionar la release
+
+```bash
+# Ver releases instaladas
+helm list
+
+# Actualizar (ej: cambiar réplicas)
+helm upgrade mi-hola ./hola-chart --set replicaCount=3
+
+# Ver historial de versiones
+helm history mi-hola
+
+# Revertir a la versión anterior
+helm rollback mi-hola 1
+
+# Desinstalar
+helm uninstall mi-hola
+```
+
+#### Comandos Helm de referencia
+
+```bash
+helm search hub  <nombre>          # Buscar en Artifact Hub
+helm search repo <nombre>          # Buscar en repos locales
+helm show values bitnami/nginx     # Ver todos los values de un chart
+helm get values  <release>         # Ver values activos de una release
+helm status      <release>         # Estado de la release
+helm inspect     <chart>           # Información del chart
+```
+
+---
