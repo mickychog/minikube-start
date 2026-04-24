@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mi-chart
+description: Mi primera app con Helm
+type: application
+version: 0.1.0       # Versión del chart
+appVersion: "1.0.0"  # Versión de la aplicación

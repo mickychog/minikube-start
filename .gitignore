@@ -1,0 +1,14 @@
+minikube-linux-amd64
+*.exe
+*.dmg
+*.deb
+
+# Archivos temporales
+*.log
+*.tmp
+*.swp
+
+# Directorios de sistema
+.DS_Store
+Thumbs.db
+EOF
